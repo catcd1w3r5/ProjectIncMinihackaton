@@ -18,6 +18,6 @@ module.exports = (req, _, next) => {
         request ip: ${req.ip}        
         `;
 
-    logging.log(info);
+    logging.info(info);
     next();
 }
