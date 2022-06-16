@@ -1,20 +1,10 @@
-const express = require('express');
-const {
-    loadEndpoints,
-    loadMiddlewares,
-    setLoggingEndpointOrMiddlewareDisabled,
-    setLoggingFileSkipped
-} = require('./ExpressServer');
+const logger = require('./logger');
+const app = require('express')();
 const port = process.env.PORT || 3030;
 
-
-const app = express();
-setLoggingFileSkipped(console.warn);
-setLoggingEndpointOrMiddlewareDisabled(console.warn);
-
-loadEndpoints(app, './controller/endpoints');
-loadMiddlewares(app, './middlewares');
+require('./middlewares')(app);
+require('./controller/endpoints')(app)
 
 app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+    logger.info(`Server is running on port ${port}`);
 });
