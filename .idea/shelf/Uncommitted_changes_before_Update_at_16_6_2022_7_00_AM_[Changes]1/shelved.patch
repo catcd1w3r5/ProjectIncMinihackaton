@@ -1,0 +1,342 @@
+Index: back-end/ExpressServer/index.js
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>const {loadEndpoints, loadMiddlewares} = require('./serverFunctions');\r\nconst {setLoggingEndpointOrMiddlewareDisabled, setLoggingFileSkipped} = require('./logging');\r\n\r\nconst Exports = {\r\n    loadEndpoints,\r\n    loadMiddlewares,\r\n    setLoggingEndpointOrMiddlewareDisabled,\r\n    setLoggingFileSkipped\r\n}\r\n\r\nmodule.exports = Exports;\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/back-end/ExpressServer/index.js b/back-end/ExpressServer/index.js
+--- a/back-end/ExpressServer/index.js	(revision 45d0fe2e3f44c9cf20becdd12d85c151f18bd756)
++++ b/back-end/ExpressServer/index.js	(date 1655333136305)
+@@ -1,11 +1,13 @@
+ const {loadEndpoints, loadMiddlewares} = require('./serverFunctions');
+-const {setLoggingEndpointOrMiddlewareDisabled, setLoggingFileSkipped} = require('./logging');
++const {setLoggingEMDisabled, setLoggingEMLoad,setLoggingError, setDebug} = require('./logging');
+ 
+ const Exports = {
+     loadEndpoints,
+     loadMiddlewares,
+-    setLoggingEndpointOrMiddlewareDisabled,
+-    setLoggingFileSkipped
++    setLoggingEMDisabled,
++    setLoggingEMLoad,
++    setLoggingError,
++    setDebug,
+ }
+ 
+ module.exports = Exports;
+Index: back-end/ExpressServer/Logging.js
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>let loggingEndpointOrMiddlewareDisabled = console.warn;\r\nlet loggingFileSkipped = console.warn;\r\n\r\nsetLoggingEndpointOrMiddlewareDisabled = (callback) => loggingEndpointOrMiddlewareDisabled = callback;\r\nsetLoggingFileSkipped = (callback) => loggingFileSkipped = callback;\r\n\r\n\r\nmodule.exports = {\r\n    loggingEndpointOrMiddlewareDisabled,\r\n    loggingFileSkipped,\r\n    setLoggingEndpointOrMiddlewareDisabled,\r\n    setLoggingFileSkipped\r\n}\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/back-end/ExpressServer/Logging.js b/back-end/ExpressServer/Logging.js
+--- a/back-end/ExpressServer/Logging.js	(revision 45d0fe2e3f44c9cf20becdd12d85c151f18bd756)
++++ b/back-end/ExpressServer/Logging.js	(date 1655333835634)
+@@ -1,13 +1,25 @@
+-let loggingEndpointOrMiddlewareDisabled = console.warn;
+-let loggingFileSkipped = console.warn;
++const loggers = {
++    loggingEMDisabled: (msg) => console.warn(msg),
++    loggingEMLoad: (msg) => console.info(msg),
++    loggingError: (msg) => {
++        throw new Error(msg);
++    },
++    debug: () => {
++    },
++}
+ 
+-setLoggingEndpointOrMiddlewareDisabled = (callback) => loggingEndpointOrMiddlewareDisabled = callback;
+-setLoggingFileSkipped = (callback) => loggingFileSkipped = callback;
++
++setLoggingEMDisabled = (callback) => loggers.loggingEMDisabled = callback;
++setLoggingEMLoad = (callback) => loggers.loggingEMLoad = callback;
++setLoggingError = (callback) => loggers.loggingError = callback;
++setDebug = (callback) => loggers.debug = callback;
+ 
+ 
+ module.exports = {
+-    loggingEndpointOrMiddlewareDisabled,
+-    loggingFileSkipped,
+-    setLoggingEndpointOrMiddlewareDisabled,
+-    setLoggingFileSkipped
++    ...loggers,
++
++    setLoggingEMDisabled,
++    setLoggingEMLoad,
++    setLoggingError,
++    setDebug
+ }
+Index: back-end/ExpressServer/serverFunctions.js
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>const {\r\n  LoadAllFilesFromFolder,\r\n  EnsureFolderExistsSync,\r\n} = require('./fsExtras');\r\nconst {loggingWarning: loggingEndpointOrMiddlewareDisabled} = require('./logging');\r\n\r\n/**\r\n * Loads all middlewares from a folder.\r\n * @param app {any} -app\r\n * @param middlewareDir {string} -Path to the folder containing the middleware\r\n */\r\nfunction loadMiddlewares(app, middlewareDir) {\r\n  EnsureFolderExistsSync(middlewareDir);\r\n  const middlewares = LoadAllFilesFromFolder(middlewareDir, '.js', require, true);\r\n\r\n  function parseInputArray(item, i) {\r\n    if (Array.isArray(item)) {\r\n      middlewares.push(...item);\r\n      // Remove the middleware from the array\r\n      middlewares.splice(i, 1);\r\n      return;\r\n    }\r\n\r\n    // If the middleware is a function, convert it to an object and add it to the array\r\n    switch (typeof item) {\r\n      case 'function':\r\n        middlewares[i] = {\r\n          handle: item,\r\n          priority: 0,\r\n          name: 'Middleware Object from Function',\r\n        };\r\n        break;\r\n      case 'object':\r\n        // if priority is not set, set it to 0\r\n        // try parse it\r\n        // if it fails, set it to 0\r\n        // eslint-disable-next-line no-param-reassign\r\n        if (typeof item.priority !== 'number') item.priority = parseInt(middlewares[i].priority, 10) || 0;\r\n        break;\r\n      default:\r\n        throw new Error('Invalid middleware type');\r\n    }\r\n  }\r\n\r\n  middlewares.forEach(parseInputArray);\r\n\r\n  // sort the middlewares by priority\r\n  middlewares.sort((a, b) => a.priority - b.priority);\r\n\r\n  function loadExtractedMiddleware(middleware) {\r\n    const {\r\n      name = 'Unnamed',\r\n      handle,\r\n      disabled,\r\n    } = middleware;\r\n\r\n    if (disabled) {\r\n      loggingEndpointOrMiddlewareDisabled(`Middleware \"${name}\" is disabled`);\r\n      return;\r\n    }\r\n    if (typeof handle === 'function') {\r\n      app.use(handle);\r\n    } else {\r\n      throw new Error(`Invalid middleware type,  Middleware \"${name}\" is not a function`);\r\n    }\r\n  }\r\n\r\n  middlewares.forEach(loadExtractedMiddleware);\r\n}\r\n\r\n/**\r\n * Loads all endpoints from a folder.\r\n * @param app {any} -app\r\n * @param endpointsDir {string} -Path to the folder containing the endpoints\r\n */\r\nfunction loadEndpoints(app, endpointsDir) {\r\n  EnsureFolderExistsSync(endpointsDir);\r\n  const endpoints = LoadAllFilesFromFolder(endpointsDir, '.js', require, true);\r\n\r\n  // flatten the array\r\n  endpoints.forEach((endpoint, i) => {\r\n    if (Array.isArray(endpoint)) {\r\n      endpoints.push(...endpoint);\r\n      endpoints.splice(i, 1);\r\n    }\r\n  });\r\n\r\n  function loadExtractedEndpoint(endpoint) {\r\n    if (typeof endpoint !== 'object') throw new Error('Invalid endpoint type');\r\n    // many ways to do object endpoints\r\n    // add middleware to express\r\n    const {\r\n      name = 'Unnamed',\r\n      path,\r\n      handler,\r\n      handle,\r\n      disabled,\r\n    } = endpoint;\r\n\r\n    const handleFunction = handler || handle;\r\n\r\n    let {\r\n      method = 'GET',\r\n    } = endpoint;\r\n\r\n    if (disabled) {\r\n      loggingEndpointOrMiddlewareDisabled(`Endpoint \"${name}\" is disabled`);\r\n      return;\r\n    }\r\n\r\n    if (typeof method !== 'string') throw new Error(`Endpoint ${name} contains invalid method`);\r\n    method = method.toLowerCase();\r\n\r\n    // check if the method is valid\r\n    if (!['get', 'post', 'put', 'delete', 'all'].includes(method)) throw new Error(`Endpoint ${name} contains invalid method \"${method}\"`);\r\n    // check if the path is valid\r\n    if (typeof path !== 'string') throw new Error(`Endpoint ${name} contains invalid path`);\r\n    // check if the handler is valid\r\n    if (typeof handleFunction !== 'function') throw new Error(`Endpoint ${name} contains invalid handler`);\r\n\r\n    app[method](path, handleFunction);\r\n  }\r\n\r\n  endpoints.forEach(loadExtractedEndpoint);\r\n}\r\n\r\nmodule.exports = {\r\n  loadMiddlewares,\r\n  loadEndpoints,\r\n};\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/back-end/ExpressServer/serverFunctions.js b/back-end/ExpressServer/serverFunctions.js
+--- a/back-end/ExpressServer/serverFunctions.js	(revision 45d0fe2e3f44c9cf20becdd12d85c151f18bd756)
++++ b/back-end/ExpressServer/serverFunctions.js	(date 1655333736935)
+@@ -1,8 +1,18 @@
+ const {
+-  LoadAllFilesFromFolder,
+-  EnsureFolderExistsSync,
++    LoadAllFilesFromFolder,
++    EnsureFolderExistsSync,
+ } = require('./fsExtras');
+-const {loggingWarning: loggingEndpointOrMiddlewareDisabled} = require('./logging');
++const {
++    loggingEMDisabled,
++    loggingEMLoad,
++    loggingError,
++    debug
++} = require('./logging');
++
++const loadFile = (filePath) => {
++    const file = require(filePath);
++    return [file, filePath];
++}
+ 
+ /**
+  * Loads all middlewares from a folder.
+@@ -10,62 +20,67 @@
+  * @param middlewareDir {string} -Path to the folder containing the middleware
+  */
+ function loadMiddlewares(app, middlewareDir) {
+-  EnsureFolderExistsSync(middlewareDir);
+-  const middlewares = LoadAllFilesFromFolder(middlewareDir, '.js', require, true);
+-
+-  function parseInputArray(item, i) {
+-    if (Array.isArray(item)) {
+-      middlewares.push(...item);
+-      // Remove the middleware from the array
+-      middlewares.splice(i, 1);
+-      return;
+-    }
+-
+-    // If the middleware is a function, convert it to an object and add it to the array
+-    switch (typeof item) {
+-      case 'function':
+-        middlewares[i] = {
+-          handle: item,
+-          priority: 0,
+-          name: 'Middleware Object from Function',
+-        };
+-        break;
+-      case 'object':
+-        // if priority is not set, set it to 0
+-        // try parse it
+-        // if it fails, set it to 0
+-        // eslint-disable-next-line no-param-reassign
+-        if (typeof item.priority !== 'number') item.priority = parseInt(middlewares[i].priority, 10) || 0;
+-        break;
+-      default:
+-        throw new Error('Invalid middleware type');
+-    }
+-  }
+-
+-  middlewares.forEach(parseInputArray);
+-
+-  // sort the middlewares by priority
+-  middlewares.sort((a, b) => a.priority - b.priority);
++    function parseInputArray(item, i) {
++        debug(`parsing item at ${item[1]}`)
++        if (Array.isArray(item[0])) {
++            middlewares.push(...item[0]);
++            // Remove the middleware from the array
++            middlewares.splice(i, 1);
++            return;
++        }
++        // If the middleware is a function, convert it to an object and add it to the array
++        switch (typeof item[0]) {
++            case 'function':
++                middlewares[i] = {
++                    handle: item[0],
++                    priority: 0,
++                    name: 'Middleware Object from Function',
++                };
++                break;
++            case 'object':
++                // if priority is not set, set it to 0
++                // try parse it
++                // if it fails, set it to 0
++                // eslint-disable-next-line no-param-reassign
++                if (typeof item[0].priority !== 'number') item.priority = parseInt(middlewares[i].priority, 10) || 0;
++                if (item[0].name === undefined) item[0].name = item[1];
++                middlewares[i] = item[0];
++                break;
++            default:
++                loggingError(`Invalid middleware type: ${typeof item[0]} located in ${item[1]}`);
++        }
++    }
+ 
+-  function loadExtractedMiddleware(middleware) {
+-    const {
+-      name = 'Unnamed',
+-      handle,
+-      disabled,
+-    } = middleware;
++    function loadExtractedMiddleware(middleware) {
++        const {
++            name = 'Unnamed',
++            handle,
++            disabled,
++        } = middleware;
+ 
+-    if (disabled) {
+-      loggingEndpointOrMiddlewareDisabled(`Middleware "${name}" is disabled`);
+-      return;
+-    }
+-    if (typeof handle === 'function') {
+-      app.use(handle);
+-    } else {
+-      throw new Error(`Invalid middleware type,  Middleware "${name}" is not a function`);
+-    }
+-  }
++        if (disabled) {
++            loggingEMDisabled(`Middleware "${name}" is disabled`);
++            return;
++        }
++        if (typeof handle === 'function') {
++            app.use(handle);
++            loadCount++;
++        } else {
++            loggingError(`Invalid middleware type,  Middleware "${name}" is not a function`);
++        }
++    }
++
++    let loadCount = 0
++    EnsureFolderExistsSync(middlewareDir);
++    const middlewares = LoadAllFilesFromFolder(middlewareDir, '.js', loadFile, true);
++
++    middlewares.forEach(parseInputArray);
++
++    // sort the middlewares by priority
++    middlewares.sort((a, b) => a.priority - b.priority);
+ 
+-  middlewares.forEach(loadExtractedMiddleware);
++    middlewares.forEach(loadExtractedMiddleware);
++    loggingEMLoad(`loaded ${loadCount} middleware(s)`);
+ }
+ 
+ /**
+@@ -74,57 +89,62 @@
+  * @param endpointsDir {string} -Path to the folder containing the endpoints
+  */
+ function loadEndpoints(app, endpointsDir) {
+-  EnsureFolderExistsSync(endpointsDir);
+-  const endpoints = LoadAllFilesFromFolder(endpointsDir, '.js', require, true);
+-
+-  // flatten the array
+-  endpoints.forEach((endpoint, i) => {
+-    if (Array.isArray(endpoint)) {
+-      endpoints.push(...endpoint);
+-      endpoints.splice(i, 1);
+-    }
+-  });
+-
+-  function loadExtractedEndpoint(endpoint) {
+-    if (typeof endpoint !== 'object') throw new Error('Invalid endpoint type');
+-    // many ways to do object endpoints
+-    // add middleware to express
+-    const {
+-      name = 'Unnamed',
+-      path,
+-      handler,
+-      handle,
+-      disabled,
+-    } = endpoint;
++    function loadExtractedEndpoint(endpoint) {
++        if (typeof endpoint[0] !== 'object') throw new Error('Invalid endpoint type');
++        // many ways to do object endpoints
++        // add middleware to express
++        const {
++            name = endpoint[1],
++            path,
++            handler,
++            handle,
++            disabled,
++        } = endpoint[0];
+ 
+-    const handleFunction = handler || handle;
++        const handleFunction = handler || handle;
+ 
+-    let {
+-      method = 'GET',
+-    } = endpoint;
++        let {
++            method = 'GET',
++        } = endpoint[0];
+ 
+-    if (disabled) {
+-      loggingEndpointOrMiddlewareDisabled(`Endpoint "${name}" is disabled`);
+-      return;
+-    }
++        if (disabled) {
++            loggingEMDisabled(`Endpoint "${name}" is disabled`);
++            return;
++        }
+ 
+-    if (typeof method !== 'string') throw new Error(`Endpoint ${name} contains invalid method`);
+-    method = method.toLowerCase();
++        if (typeof method !== 'string') loggingError(`Endpoint ${name} contains invalid method`);
++        method = method.toLowerCase();
+ 
+-    // check if the method is valid
+-    if (!['get', 'post', 'put', 'delete', 'all'].includes(method)) throw new Error(`Endpoint ${name} contains invalid method "${method}"`);
+-    // check if the path is valid
+-    if (typeof path !== 'string') throw new Error(`Endpoint ${name} contains invalid path`);
+-    // check if the handler is valid
+-    if (typeof handleFunction !== 'function') throw new Error(`Endpoint ${name} contains invalid handler`);
++        // check if the method is valid
++        if (!['get', 'post', 'put', 'delete', 'all'].includes(method)) loggingError(`Endpoint ${name} contains invalid method "${method}"`);
++        // check if the path is valid
++        if (typeof path !== 'string') loggingError(`Endpoint ${name} contains invalid path`);
++        // check if the handler is valid
++        if (typeof handleFunction !== 'function') loggingError(`Endpoint ${name} contains invalid handler`);
+ 
+-    app[method](path, handleFunction);
+-  }
++        app[method](path, handleFunction);
++        loadCount++;
++    }
++
++    let loadCount = 0
++    EnsureFolderExistsSync(endpointsDir);
++    const endpoints = LoadAllFilesFromFolder(endpointsDir, '.js', require, true);
++
++    // flatten the array
++    endpoints.forEach((endpoint, i) => {
++        if (Array.isArray(endpoint[0])) {
++            endpoints.push(...endpoint[0]);
++            endpoints.splice(i, 1);
++        }
++    });
++
+ 
+-  endpoints.forEach(loadExtractedEndpoint);
++    endpoints.forEach(loadExtractedEndpoint);
++
++    loggingEMLoad(`loaded ${loadCount} endpoints(s)`);
+ }
+ 
+ module.exports = {
+-  loadMiddlewares,
+-  loadEndpoints,
++    loadMiddlewares,
++    loadEndpoints,
+ };
+Index: back-end/ExpressServer
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/back-end/ExpressServer b/back-end/ExpressServer
+new file mode 100644
+--- /dev/null	
++++ b/back-end/ExpressServer	
+@@ -0,0 +1,1 @@
++45d0fe2e3f44c9cf20becdd12d85c151f18bd756
+\ No newline at end of file
